@@ -1,0 +1,190 @@
+// StoreForge — database schema (design artifact for the POC).
+//
+// This maps the StoreBlueprint + e-commerce concepts into a multi-tenant
+// relational model. Every business object carries `storeId` so one codebase
+// serves thousands of independent stores.
+//
+// NOTE: The POC renders from in-memory samples (see src/lib/samples) so it
+// runs with zero infrastructure. This schema is the blueprint for the real
+// Postgres/Prisma implementation.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  // Authentication is managed by Supabase Auth. Keep this ID synchronized
+  // with auth.users.id; never store passwords in StoreForge.
+  stores    Store[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Store {
+  id          String   @id @default(cuid())
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id])
+  name        String
+  slug        String   @unique
+  description String?
+  industry    String
+  status      String   @default("DRAFT") // DRAFT | PUBLISHED | SUSPENDED
+  theme       Theme?
+  pages       Page[]
+  products    Product[]
+  categories  Category[]
+  orders      Order[]
+  media       Media[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ownerId])
+}
+
+model Theme {
+  id            String @id @default(cuid())
+  storeId       String @unique
+  store         Store  @relation(fields: [storeId], references: [id])
+  primaryColor  String
+  secondaryColor String
+  accentColor   String?
+  headingFont   String
+  bodyFont      String
+  spacing       String // compact | medium | large
+  borderRadius  String
+  buttonStyle   String
+  cardStyle     String
+}
+
+model Page {
+  id       String    @id @default(cuid())
+  storeId  String
+  store    Store     @relation(fields: [storeId], references: [id])
+  type     String // home | shop | product | about | contact | cart | checkout
+  slug     String
+  title    String?
+  sections Section[]
+  createdAt DateTime  @default(now())
+
+  @@unique([storeId, slug])
+}
+
+model Section {
+  id       String @id @default(cuid())
+  pageId   String
+  page     Page   @relation(fields: [pageId], references: [id])
+  type     String // hero | featured-products | category-grid | promo-banner | testimonials | newsletter
+  variant  String
+  position Int
+  config   Json // section-specific content/settings, validated by Zod
+
+  @@index([pageId])
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  storeId     String
+  store       Store     @relation(fields: [storeId], references: [id])
+  name        String
+  slug        String
+  description String?
+  image       String?
+  products    Product[]
+
+  @@unique([storeId, slug])
+}
+
+model Product {
+  id             String         @id @default(cuid())
+  storeId        String
+  store          Store          @relation(fields: [storeId], references: [id])
+  categoryId     String?
+  category       Category?      @relation(fields: [categoryId], references: [id])
+  name           String
+  slug           String
+  description    String?
+  price          Int // stored in minor units (kobo) to avoid float issues
+  compareAtPrice Int?
+  sku            String?
+  stock          Int            @default(0)
+  featured       Boolean        @default(false)
+  status         String         @default("ACTIVE")
+  images         ProductImage[]
+  orderItems     OrderItem[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([storeId, slug])
+  @@index([storeId])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  url       String
+  alt       String?
+  position  Int     @default(0)
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  storeId   String
+  name      String
+  email     String?
+  phone     String?
+  orders    Order[]
+  createdAt DateTime @default(now())
+
+  @@index([storeId])
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  storeId       String
+  customerId    String?
+  customer      Customer?   @relation(fields: [customerId], references: [id])
+  orderNumber   String      @unique
+  status        String      @default("PENDING")
+  subtotal      Int
+  shipping      Int         @default(0)
+  tax           Int         @default(0)
+  total         Int
+  currency      String      @default("NGN")
+  paymentStatus String      @default("UNPAID")
+  items         OrderItem[]
+  createdAt     DateTime    @default(now())
+
+  @@index([storeId])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Int
+  total     Int
+}
+
+model Media {
+  id        String   @id @default(cuid())
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id])
+  url       String
+  type      String // image | video
+  alt       String?
+  createdAt DateTime @default(now())
+
+  @@index([storeId])
+}
