@@ -166,7 +166,11 @@ export function generateBlueprint(input: GeneratorInput): ValidationResult {
 
   const description = input.description || INDUSTRY_DESCRIPTIONS[industry];
   const copy = INDUSTRY_COPY[industry];
-  const image = placeholderImage(input.name.toUpperCase(), preset.primaryColor, "#ffffff");
+  const images = {
+    hero: placeholderImage(input.name.toUpperCase(), preset.primaryColor, preset.secondaryColor),
+    collection: placeholderImage("COLLECTION", preset.accentColor, "#ffffff"),
+    story: placeholderImage("CRAFTED FOR YOU", preset.secondaryColor, preset.primaryColor),
+  };
 
   const blueprint: StoreBlueprint = {
     version: 1,
@@ -205,7 +209,7 @@ export function generateBlueprint(input: GeneratorInput): ValidationResult {
         type: "home",
         slug: "/",
         title: "Home",
-        sections: buildSections(input, preset, description, copy, image),
+        sections: buildSections(input, preset, description, copy, images),
       },
       {
         type: "shop",
@@ -222,7 +226,7 @@ export function generateBlueprint(input: GeneratorInput): ValidationResult {
         slug: "/about",
         title: "About",
         sections: [
-          { type: "brand-story", variant: "split", content: { eyebrow: copy.eyebrow, heading: copy.storyHeading, body: description, values: copy.values, image } },
+          { type: "brand-story", variant: "split", content: { eyebrow: copy.eyebrow, heading: copy.storyHeading, body: description, values: copy.values, image: images.story } },
           { type: "rich-text", variant: "default", content: { heading: `Why ${input.name}?`, body: `We believe shopping should feel personal, not overwhelming. ${description} Every detail is chosen to make the experience feel considered, useful, and worth coming back to.` } },
           { type: "faq", variant: "default", settings: { title: "Common questions" } },
         ],
@@ -245,7 +249,7 @@ function buildSections(
   preset: StylePreset,
   description: string,
   copy: (typeof INDUSTRY_COPY)[Industry],
-  image: string,
+  images: { hero: string; collection: string; story: string },
 ): StoreBlueprint["pages"][number]["sections"] {
   const useCarousel = input.style === "tech" || input.style === "vibrant" || input.style === "bold";
   const useCollectionGrid = input.style === "luxury" || input.style === "editorial" || input.style === "earthy";
@@ -268,7 +272,7 @@ function buildSections(
         subheading: description.length > 110 ? `${description.slice(0, 107).trimEnd()}…` : description,
         buttonText: "Shop Collection",
         buttonLink: "/shop",
-        image,
+        image: images.hero,
       },
     },
     ...(useCollectionGrid
@@ -287,7 +291,7 @@ function buildSections(
         subheading: "Curated products, thoughtful service, and delivery you can count on.",
         buttonText: "Explore the collection",
         buttonLink: "/shop",
-        image,
+        image: images.collection,
       },
     },
     {
@@ -299,13 +303,11 @@ function buildSections(
         body: description,
         buttonText: "Our Story",
         buttonLink: "/about",
-        image,
+        image: images.story,
       },
     },
     { type: "brand-story", variant: "centered", content: { eyebrow: copy.eyebrow, heading: `Welcome to ${input.name}`, body: description, values: copy.values } },
-    { type: "social-proof", variant: "stats", settings: { title: "Loved by our customers" } },
     { type: "testimonials", variant: "cards", settings: { title: "What Customers Say" } },
-    { type: "faq", variant: "default", settings: { title: "Frequently Asked Questions" } },
     {
       type: "newsletter",
       variant: "default",

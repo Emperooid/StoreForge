@@ -18,18 +18,47 @@ export default function StoresPage() {
   const [importError, setImportError] = useState<string | null>(null);
 
   useEffect(() => {
-    setStores(listStoredStores());
+    let active = true;
+    fetch("/api/stores")
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Server stores unavailable.");
+        return response.json();
+      })
+      .then((serverStores: Array<{
+        blueprint: StoredStore["blueprint"];
+        catalog: StoredStore["catalog"];
+        status: StoredStore["status"];
+        updatedAt: string;
+      }>) => {
+        if (!active) return;
+        setStores(serverStores.map((store) => ({
+          blueprint: store.blueprint,
+          catalog: store.catalog,
+          status: store.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
+          savedAt: store.updatedAt,
+        })));
+      })
+      .catch(() => {
+        if (active) setStores(listStoredStores());
+      });
+    return () => { active = false; };
   }, []);
 
   function remove(slug: string) {
     if (!window.confirm("Delete this saved store? This cannot be undone.")) return;
-    deleteStore(slug);
-    setStores((current) => current.filter((store) => store.blueprint.store.slug !== slug));
+    fetch(`/api/stores/${encodeURIComponent(slug)}`, { method: "DELETE" })
+      .catch(() => deleteStore(slug))
+      .finally(() => setStores((current) => current.filter((store) => store.blueprint.store.slug !== slug)));
   }
 
   function togglePublished(store: StoredStore) {
-    saveStore({ blueprint: store.blueprint, catalog: store.catalog, status: store.status === "PUBLISHED" ? "DRAFT" : "PUBLISHED" });
-    setStores(listStoredStores());
+    const status = store.status === "PUBLISHED" ? "DRAFT" : "PUBLISHED";
+    fetch(`/api/stores/${encodeURIComponent(store.blueprint.store.slug)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    }).catch(() => saveStore({ blueprint: store.blueprint, catalog: store.catalog, status }))
+      .finally(() => setStores((current) => current.map((item) => item.blueprint.store.slug === store.blueprint.store.slug ? { ...item, status } : item)));
   }
 
   async function handleImport(file?: File) {

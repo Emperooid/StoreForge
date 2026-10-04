@@ -8,15 +8,17 @@ export function ImageUpload({
   value,
   label,
   onChange,
+  storeSlug,
 }: {
   value?: string;
   label: string;
   onChange: (value: string | undefined) => void;
+  storeSlug?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
 
-  function selectFile(file?: File) {
+  async function selectFile(file?: File) {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       setError("Choose an image file.");
@@ -25,6 +27,24 @@ export function ImageUpload({
     if (file.size > MAX_IMAGE_BYTES) {
       setError("Images must be 2 MB or smaller.");
       return;
+    }
+    if (storeSlug) {
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch(`/api/stores/${encodeURIComponent(storeSlug)}/media`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!response.ok) throw new Error("Cloud upload failed.");
+        const result = await response.json() as { url?: string };
+        if (!result.url) throw new Error("Cloud upload returned no URL.");
+        setError(null);
+        onChange(result.url);
+        return;
+      } catch (uploadError) {
+        console.warn("Unable to upload image to Supabase; using local fallback.", uploadError);
+      }
     }
     const reader = new FileReader();
     reader.onload = () => {

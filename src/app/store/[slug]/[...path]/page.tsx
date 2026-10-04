@@ -6,6 +6,7 @@ import { ProductDetail } from "@/components/store/ProductDetail";
 import { CartPage } from "@/components/store/CartPage";
 import { ShopPage } from "@/components/store/ShopPage";
 import { CheckoutPage } from "@/components/store/CheckoutPage";
+import { findPublishedStore } from "@/lib/supabase/store-repository";
 
 export default async function StoreSubpage({
   params,
@@ -13,7 +14,13 @@ export default async function StoreSubpage({
   params: Promise<{ slug: string; path: string[] }>;
 }) {
   const { slug, path } = await params;
-  const sample = resolveStore(slug);
+  let sample = resolveStore(slug);
+  try {
+    const published = await findPublishedStore(slug);
+    if (published) sample = { blueprint: published.blueprint, catalog: published.catalog };
+  } catch (error) {
+    console.warn("Supabase storefront lookup unavailable; using demo resolver.", error);
+  }
 
   if (!sample || path.length === 0) {
     notFound();
@@ -72,3 +79,4 @@ export function generateStaticParams() {
 }
 
 export const dynamicParams = true;
+export const dynamic = "force-dynamic";

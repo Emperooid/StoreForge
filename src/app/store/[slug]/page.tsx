@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { samples } from "@/lib/samples/stores";
 import { StoredStorePage } from "@/components/store/StoredStorePage";
 import { resolveStore } from "@/lib/store-resolver";
+import { findPublishedStore } from "@/lib/supabase/store-repository";
 
 /**
  * Multi-tenant store route: /store/<slug>
@@ -11,7 +12,13 @@ import { resolveStore } from "@/lib/store-resolver";
  */
 export default async function StoreRoute({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const sample = resolveStore(slug);
+  let sample = resolveStore(slug);
+  try {
+    const published = await findPublishedStore(slug);
+    if (published) sample = { blueprint: published.blueprint, catalog: published.catalog };
+  } catch (error) {
+    console.warn("Supabase storefront lookup unavailable; using demo resolver.", error);
+  }
 
   if (!sample) {
     notFound();
@@ -25,3 +32,4 @@ export function generateStaticParams() {
 }
 
 export const dynamicParams = true;
+export const dynamic = "force-dynamic";

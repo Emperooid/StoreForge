@@ -78,15 +78,47 @@ Generated code per store becomes unmaintainable at scale. Instead:
 3. Add the visual editor (user/AI edits mutate the blueprint, not the app).
 4. Domain resolution for custom domains (`store.example.com` → `storeId`).
 5. Payment abstraction layer (Flutterwave / Paystack / Stripe).
-# Production integration setup
+# Supabase setup
 
-The app is currently local-first, but production adapters are included for:
+StoreForge uses Next.js server rendering and route handlers directly; there is
+no separate backend service.
 
-- Supabase Auth and PostgreSQL
-- Supabase Storage (`store-media` bucket)
-- Paystack payments
-- Vercel deployment
+Supabase provides authentication, PostgreSQL, and Storage.
 
-Copy `.env.example` to `.env.local` and fill in the values from your provider dashboards. Never expose `SUPABASE_SERVICE_ROLE_KEY` or `PAYSTACK_SECRET_KEY` to the browser.
+Copy `.env.example` to `.env.local` and fill in:
 
-Create the Supabase Storage bucket named `store-media` and configure its policies before enabling server image uploads. The Paystack integration is intentionally disabled until `PAYSTACK_SECRET_KEY` is configured.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (server-only)
+
+The legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` is still accepted as a fallback.
+Never expose `SUPABASE_SERVICE_ROLE_KEY` to browser code.
+
+Create a Supabase Storage bucket named `store-media` and configure its policies
+before enabling server image uploads.
+
+Checkout currently records an order locally without payment processing. Payment
+provider integration is intentionally postponed.
+
+## Database migration
+
+Run `supabase/migrations/001_storeforge.sql` in the Supabase SQL editor. It
+creates the owner-scoped `stores` table, stores validated blueprints/catalogs as
+JSONB, and enables RLS so users can only manage their own stores. Published
+stores remain publicly readable.
+
+The Next.js store API is available at `/api/stores`. It uses the authenticated
+Supabase session on the server; the service-role key is not required for normal
+store CRUD.
+
+The visual editor at `/stores/[slug]/edit` now reads/writes through these API
+routes when Supabase is available, with browser local storage retained as a
+fallback for demo/offline mode.
+
+Run `supabase/migrations/002_orders.sql` after the stores migration. Checkout
+then submits orders through `/api/storefront/orders`, and store owners can view
+them through `/api/stores/[slug]/orders`. Payment processing remains disabled.
+
+The editor uploads images through `/api/stores/[slug]/media` when the
+`store-media` bucket exists. If the bucket or credentials are unavailable, the
+editor falls back to browser-local image data.

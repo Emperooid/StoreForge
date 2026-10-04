@@ -13,12 +13,41 @@ type HeroSection = Extract<Section, { type: "hero" }>;
 export default function StoreEditorPage({ params }: { params: Promise<{ slug: string }> }) {
   const [slug, setSlug] = useState<string | null>(null);
   const [store, setStore] = useState<StoredStore | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    params.then(({ slug: routeSlug }) => {
+    params.then(async ({ slug: routeSlug }) => {
       setSlug(routeSlug);
-      setStore(loadStore(routeSlug));
+      try {
+        const response = await fetch(`/api/stores/${encodeURIComponent(routeSlug)}`);
+        if (response.ok) {
+          const serverStore = await response.json() as {
+            blueprint: StoredStore["blueprint"];
+            catalog: StoredStore["catalog"];
+            status: StoredStore["status"];
+            updatedAt: string;
+          };
+          setStore({
+            blueprint: serverStore.blueprint,
+            catalog: serverStore.catalog,
+            status: serverStore.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
+            savedAt: serverStore.updatedAt,
+          });
+          setSaveMessage("Loaded from Supabase");
+          return;
+        }
+      } catch (error) {
+        console.warn("Unable to load store from Supabase; using local fallback.", error);
+      }
+
+      const localStore = loadStore(routeSlug);
+      setStore(localStore);
+      if (localStore) setSaveMessage("Loaded from this browser (fallback mode)");
+    }).finally(() => {
+      setLoading(false);
     });
   }, [params]);
 
@@ -31,6 +60,7 @@ export default function StoreEditorPage({ params }: { params: Promise<{ slug: st
   function updateBlueprint(update: (blueprint: StoreBlueprint) => StoreBlueprint) {
     setStore((current) => current ? { ...current, blueprint: update(current.blueprint) } : current);
     setSaved(false);
+    setSaveMessage(null);
   }
 
   function updateHero(field: keyof HeroSection["content"], value: string) {
@@ -79,6 +109,7 @@ export default function StoreEditorPage({ params }: { params: Promise<{ slug: st
       },
     } : current);
     setSaved(false);
+    setSaveMessage(null);
   }
 
   function updateProductImage(productId: string, value: string | undefined) {
@@ -92,6 +123,7 @@ export default function StoreEditorPage({ params }: { params: Promise<{ slug: st
       },
     } : current);
     setSaved(false);
+    setSaveMessage(null);
   }
 
   function addProduct() {
@@ -120,6 +152,7 @@ export default function StoreEditorPage({ params }: { params: Promise<{ slug: st
       };
     });
     setSaved(false);
+    setSaveMessage(null);
   }
 
   function deleteProduct(productId: string) {
@@ -128,6 +161,7 @@ export default function StoreEditorPage({ params }: { params: Promise<{ slug: st
       catalog: { ...current.catalog, products: current.catalog.products.filter((product) => product.id !== productId) },
     } : current);
     setSaved(false);
+    setSaveMessage(null);
   }
 
   function updateBrandImage(value: string | undefined) {
@@ -158,10 +192,58 @@ export default function StoreEditorPage({ params }: { params: Promise<{ slug: st
     }));
   }
 
-  function saveChanges() {
-    if (!store) return;
-    saveStore({ blueprint: store.blueprint, catalog: store.catalog, status: store.status });
-    setSaved(true);
+  async function saveChanges() {
+    if (!store || !slug) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/stores/${encodeURIComponent(slug)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blueprint: store.blueprint,
+          catalog: store.catalog,
+          status: store.status,
+        }),
+      });
+      if (!response.ok) throw new Error("Unable to persist changes to Supabase.");
+      const serverStore = await response.json() as {
+        blueprint: StoredStore["blueprint"];
+        catalog: StoredStore["catalog"];
+        status: StoredStore["status"];
+        updatedAt: string;
+      };
+      const persistedStore: StoredStore = {
+        blueprint: serverStore.blueprint,
+        catalog: serverStore.catalog,
+        status: serverStore.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
+        savedAt: serverStore.updatedAt,
+      };
+      setStore(persistedStore);
+      saveStore({
+        blueprint: persistedStore.blueprint,
+        catalog: persistedStore.catalog,
+        status: persistedStore.status,
+      });
+      setSaveMessage("Saved to Supabase");
+    } catch (error) {
+      console.error("Unable to save store to Supabase; using local fallback.", error);
+      saveStore({ blueprint: store.blueprint, catalog: store.catalog, status: store.status });
+      setSaveMessage("Saved locally (Supabase unavailable)");
+    } finally {
+      setSaving(false);
+      setSaved(true);
+    }
+  }
+
+  if (loading) {
+    return (
+      <main style={shellStyle}>
+        <section style={emptyStyle}>
+          <h1>Loading editor…</h1>
+          <p>Fetching your store from Supabase.</p>
+        </section>
+      </main>
+    );
   }
 
   if (!slug || !store) {
@@ -185,8 +267,10 @@ export default function StoreEditorPage({ params }: { params: Promise<{ slug: st
           <h1 style={{ margin: "10px 0 0" }}>Edit {store.blueprint.store.name}</h1>
         </div>
         <div style={toolbarStyle}>
-          {saved && <span style={{ color: "#166534", fontSize: 13 }}>Saved locally</span>}
-          <button onClick={saveChanges} style={buttonStyle}>Save changes</button>
+          {saveMessage && <span style={{ color: saved ? "#166534" : "#64748b", fontSize: 13 }}>{saveMessage}</span>}
+          <button disabled={saving} onClick={() => { void saveChanges(); }} style={buttonStyle}>
+            {saving ? "Saving…" : "Save changes"}
+          </button>
           <Link href={`/store/${slug}`} target="_blank" style={secondaryButton}>Preview ↗</Link>
         </div>
       </header>
@@ -197,7 +281,7 @@ export default function StoreEditorPage({ params }: { params: Promise<{ slug: st
           <p style={hintStyle}>Edit the most important content and shape the order of your homepage sections.</p>
           <section style={fieldGroupStyle}>
             <h3 style={subheading}>Brand assets</h3>
-            <ImageUpload value={store.blueprint.branding.logo} label="Logo" onChange={updateBrandImage} />
+            <ImageUpload value={store.blueprint.branding.logo} label="Logo" storeSlug={slug} onChange={updateBrandImage} />
           </section>
           <section style={fieldGroupStyle}>
             <h3 style={subheading}>Theme</h3>
@@ -228,6 +312,7 @@ export default function StoreEditorPage({ params }: { params: Promise<{ slug: st
             <SectionFields
               key={`fields-${section.type}-${index}`}
               section={section}
+              storeSlug={slug}
               onChange={(field, value) => updateSectionContent(index, field, value)}
               onImageChange={(value) => updateSectionContent(index, "image", value ?? "")}
             />
@@ -254,10 +339,10 @@ export default function StoreEditorPage({ params }: { params: Promise<{ slug: st
 
           <section style={fieldGroupStyle}>
             <h3 style={subheading}>Products</h3>
-            <p style={hintStyle}>Update the starter catalog before connecting a database.</p>
+            <p style={hintStyle}>Product updates save to your Supabase store when available.</p>
             <div style={{ display: "grid", gap: 12 }}>
               {store.catalog.products.map((product) => (
-                <ProductFields key={product.id} product={product} onChange={updateProduct} onImageChange={updateProductImage} onDelete={deleteProduct} />
+                <ProductFields key={product.id} product={product} storeSlug={slug} onChange={updateProduct} onImageChange={updateProductImage} onDelete={deleteProduct} />
               ))}
             </div>
             <button type="button" onClick={addProduct} style={secondaryButton}>Add product</button>
@@ -280,10 +365,12 @@ export default function StoreEditorPage({ params }: { params: Promise<{ slug: st
 
 function SectionFields({
   section,
+  storeSlug,
   onChange,
   onImageChange,
 }: {
   section: Section;
+  storeSlug: string;
   onChange: (field: string, value: string) => void;
   onImageChange: (value: string | undefined) => void;
 }) {
@@ -310,7 +397,7 @@ function SectionFields({
         <label style={labelStyle}>Button text<input value={contentField(content, "buttonText")} onChange={(e) => onChange("buttonText", e.target.value)} style={inputStyle} /></label>
       )}
       {"image" in (content ?? {}) && (
-        <ImageUpload value={contentField(content, "image")} label="Section image" onChange={onImageChange} />
+        <ImageUpload value={contentField(content, "image")} label="Section image" storeSlug={storeSlug} onChange={onImageChange} />
       )}
       {"title" in (settings ?? {}) && (
         <label style={labelStyle}>Section title<input value={settingsField(settings, "title")} onChange={(e) => onChange("title", e.target.value)} style={inputStyle} /></label>
@@ -331,18 +418,20 @@ function settingsField(settings: unknown, field: string): string {
 
 function ProductFields({
   product,
+  storeSlug,
   onChange,
   onImageChange,
   onDelete,
 }: {
   product: Product;
+  storeSlug: string;
   onChange: (id: string, field: keyof Product, value: string | number | boolean) => void;
   onImageChange: (id: string, value: string | undefined) => void;
   onDelete: (id: string) => void;
 }) {
   return (
     <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 10, display: "grid", gap: 8 }}>
-      <ImageUpload value={product.image} label="Product image" onChange={(value) => onImageChange(product.id, value)} />
+      <ImageUpload value={product.image} label="Product image" storeSlug={storeSlug} onChange={(value) => onImageChange(product.id, value)} />
       <label style={labelStyle}>Product name<input value={product.name} onChange={(e) => onChange(product.id, "name", e.target.value)} style={inputStyle} /></label>
       <label style={labelStyle}>Description<textarea value={product.description ?? ""} onChange={(e) => onChange(product.id, "description", e.target.value)} rows={2} style={inputStyle} /></label>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>

@@ -14,8 +14,27 @@ export default function OrdersPage({ params }: { params: Promise<{ slug: string 
   useEffect(() => {
     params.then(({ slug: routeSlug }) => {
       setSlug(routeSlug);
-      setOrders(loadOrders(routeSlug));
       setCurrency(loadStore(routeSlug)?.blueprint.ecommerce.currency ?? "NGN");
+      fetch(`/api/stores/${encodeURIComponent(routeSlug)}/orders`)
+        .then(async (response) => {
+          if (!response.ok) throw new Error("Server orders unavailable.");
+          return response.json();
+        })
+        .then((serverOrders: Array<{
+          orderNumber: string;
+          items: Order["lines"];
+          customer: Order["customer"];
+          total: number;
+          createdAt: string;
+        }>) => setOrders(serverOrders.map((order) => ({
+          id: order.orderNumber,
+          storeSlug: routeSlug,
+          lines: order.items,
+          customer: order.customer,
+          total: order.total,
+          createdAt: order.createdAt,
+        }))))
+        .catch(() => setOrders(loadOrders(routeSlug)));
     });
   }, [params]);
 
@@ -25,7 +44,7 @@ export default function OrdersPage({ params }: { params: Promise<{ slug: string 
     <main style={pageStyle}>
       <Link href="/stores" style={backLink}>← Your stores</Link>
       <header style={headerStyle}>
-        <div><h1>Orders</h1><p style={muted}>Orders saved in this browser for this store.</p></div>
+        <div><h1>Orders</h1><p style={muted}>Orders are loaded from Supabase when available.</p></div>
         <Link href={`/store/${slug}`} style={button}>View storefront</Link>
       </header>
       {orders.length === 0 ? (

@@ -35,7 +35,7 @@ export default function GeneratePage() {
   } | null>(null);
   const [errors, setErrors] = useState<string[] | null>(null);
 
-  function handleGenerate(e: React.FormEvent) {
+  async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
     const res = generateBlueprint({ name: name || "My Store", industry, style, description });
 
@@ -51,6 +51,15 @@ export default function GeneratePage() {
       catalog: makeStarterCatalog(res.blueprint.store.slug, industry),
     };
     saveStore({ ...generatedStore, status: "DRAFT" });
+    try {
+      await fetch("/api/stores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...generatedStore, status: "DRAFT" }),
+      });
+    } catch {
+      // Local storage remains the offline/demo persistence fallback.
+    }
     setResult(generatedStore);
   }
 
