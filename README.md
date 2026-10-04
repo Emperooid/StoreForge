@@ -87,12 +87,12 @@ Supabase provides authentication, PostgreSQL, and Storage.
 
 Copy `.env.example` to `.env.local` and fill in:
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` (server-only)
+- `NEXT_PUBLIC_STOREFORGE_SUPABASE_URL`
+- `NEXT_PUBLIC_STOREFORGE_SUPABASE_KEY` (publishable key)
+- `STOREFORGE_SUPABASE_SERVER_KEY` (server-only)
 
-The legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` is still accepted as a fallback.
-Never expose `SUPABASE_SERVICE_ROLE_KEY` to browser code.
+The publishable key is expected to be visible in browser bundles. Never expose
+`STOREFORGE_SUPABASE_SERVER_KEY` to browser code.
 
 Create a Supabase Storage bucket named `store-media` and configure its policies
 before enabling server image uploads.
